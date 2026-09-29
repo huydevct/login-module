@@ -1,0 +1,46 @@
+{
+    "name": "huyct/login-module",
+    "description": "Login module for nwidart/laravel-modules: CMS login (CoreUI admin layout) and device-based JWT authentication for mobile APIs.",
+    "type": "laravel-module",
+    "license": "MIT",
+    "keywords": ["laravel", "laravel-module", "nwidart", "login", "jwt", "coreui"],
+    "authors": [
+        {
+            "name": "Davinci Leo"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "firebase/php-jwt": "^6.10|^7.0",
+        "joshbrw/laravel-module-installer": "^2.0",
+        "nwidart/laravel-modules": "^11.0|^12.0|^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {}
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\Login\\": "app/",
+            "Modules\\Login\\Database\\Factories\\": "database/factories/",
+            "Modules\\Login\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\Login\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "joshbrw/laravel-module-installer": true,
+            "wikimedia/composer-merge-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

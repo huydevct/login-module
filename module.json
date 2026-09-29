@@ -1,0 +1,11 @@
+{
+    "name": "Login",
+    "alias": "login",
+    "description": "CMS login (CoreUI admin layout) and device-based JWT authentication for mobile APIs.",
+    "keywords": ["login", "auth", "jwt", "coreui"],
+    "priority": 0,
+    "providers": [
+        "Modules\\Login\\Providers\\LoginServiceProvider"
+    ],
+    "files": []
+}
