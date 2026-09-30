@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Modules\Login\Console\CreateDeviceToken;
 use Modules\Login\Console\CreateUserCms;
+use Modules\Login\Console\SetupEnv;
 use Modules\Login\Http\Middleware\ApiAuthenticate;
 use Modules\Login\Http\Middleware\VerifyDeviceSignature;
 
@@ -43,6 +44,7 @@ class LoginServiceProvider extends ServiceProvider
         $this->commands([
             CreateUserCms::class,
             CreateDeviceToken::class,
+            SetupEnv::class,
         ]);
     }
 

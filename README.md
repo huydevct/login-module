@@ -5,7 +5,7 @@ Module cho [nwidart/laravel-modules](https://laravelmodules.com/docs/13/getting-
 - **CMS login**: trang `/login`, `/logout`, layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
 - **API auth cho thiết bị**: `POST /api/v1/auth/add-device` cấp JWT theo device, middleware `auth.api` để bảo vệ route API của project, `LoginHelper::AuthApi()` để lấy device/app hiện tại.
 - **Android Keystore attestation**: đăng ký public key của key nằm trong phần cứng (TEE/StrongBox) qua Key Attestation, middleware `signed.device` kiểm tra chữ ký từng request (chống sửa request, gửi lại, app bị đóng gói lại).
-- Lệnh artisan `login:create-user`, `login:create-device-token`.
+- Lệnh artisan `login:env` (điền biến env vào `.env` + `.env.example`), `login:create-user`, `login:create-device-token`.
 
 Yêu cầu: PHP ^8.2 (ext `openssl`), Laravel 11+, `nwidart/laravel-modules` ^11 | ^12 | ^13. Dùng attestation thì cache store phải là Redis (`Cache::add` nguyên tử).
 
@@ -59,6 +59,7 @@ php artisan module:enable Login
 php artisan vendor:publish --tag=login-assets   # CoreUI css/js/icon -> public/modules/login
 php artisan vendor:publish --tag=login-config   # (tuỳ chọn) config/login.php
 php artisan migrate
+php artisan login:env                          # thêm biến env của module (bước 4)
 php artisan login:create-user
 ```
 
@@ -72,13 +73,25 @@ Migrations của module:
 
 ### 4. `.env`
 
-```dotenv
-JWT_OPENSSL_DEVICE_SECRET=   # key AES-256-CBC để giải mã secret gửi lên add-device (app mobile dùng chung key)
-AUTH_API_JWT_SECRET=         # secret cho LoginHelper::createJwtAuthUser()
-LOGIN_MODULE_HOME=/          # route name hoặc URL sau khi login CMS
-LOGIN_MODULE_CMS_TITLE="My CMS"
-LOGIN_MODULE_BLOCKED_DEVICES_KEY=   # (tuỳ chọn) Redis set chứa id device bị khoá, vd devices:blocked
+```sh
+php artisan login:env
 ```
+
+Lệnh thêm các biến của module vào cuối `.env.example` và `.env` (khối `# Login module`). Chỉ thêm biến còn thiếu, không ghi đè biến đã có, nên chạy lại lúc nào cũng được. File không tồn tại thì bỏ qua (lệnh không tạo `.env`).
+
+| Biến | Giá trị lệnh ghi | Ý nghĩa |
+|---|---|---|
+| `JWT_OPENSSL_DEVICE_SECRET` | `.env`: sinh ngẫu nhiên 32 ký tự; `.env.example`: trống | Khoá AES-256-CBC giải mã secret gửi lên `add-device`. **App mobile dùng chung khoá này** — project đang chạy thì giữ khoá cũ |
+| `AUTH_API_JWT_SECRET` | `.env`: sinh ngẫu nhiên 64 ký tự; `.env.example`: trống | Secret cho `LoginHelper::createJwtAuthUser()` |
+| `LOGIN_MODULE_HOME` | `/` | Route name hoặc URL sau khi login CMS |
+| `LOGIN_MODULE_CMS_TITLE` | `"${APP_NAME} CMS"` | Tiêu đề CMS |
+| `LOGIN_MODULE_CMS_FOOTER` | `"Powered by CoreUI"` | Footer CMS |
+| `LOGIN_MODULE_ASSETS_URL` | `/modules/login` | URL assets đã publish |
+| `LOGIN_MODULE_BLOCKED_DEVICES_KEY` | trống (tắt) | Redis set chứa id device bị khoá, vd `devices:blocked` |
+| `LOGIN_MODULE_ATTESTATION_REQUIRE_VERIFIED_BOOT` | `true` | Xem mục Android Keystore attestation |
+| `LOGIN_MODULE_ATTESTATION_ROOTS` | trống (file đi kèm module) | Xem mục Android Keystore attestation |
+
+Biến có giá trị mặc định được ghi rõ giá trị thay vì để trống: `KEY=` rỗng trả về chuỗi rỗng chứ không lấy mặc định trong config (vd `LOGIN_MODULE_ATTESTATION_REQUIRE_VERIFIED_BOOT=` rỗng sẽ tắt kiểm tra bootloader).
 
 ## Sử dụng
 
