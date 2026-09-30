@@ -2,7 +2,7 @@
 
 Module cho [nwidart/laravel-modules](https://laravelmodules.com/docs/13/getting-started/introduction), gộp từ 2 module `Login` + `CoreUI` cũ:
 
-- **CMS login**: trang `/login`, `/logout`, layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
+- **CMS login**: trang `/login`, `/logout`, trang admin mặc định `/admin` và layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
 - **API auth cho thiết bị**: `POST /api/v1/auth/add-device` cấp JWT theo device, middleware `auth.api` để bảo vệ route API của project, `LoginHelper::AuthApi()` để lấy device/app hiện tại.
 - **Android Keystore attestation**: đăng ký public key của key nằm trong phần cứng (TEE/StrongBox) qua Key Attestation, middleware `signed.device` kiểm tra chữ ký từng request (chống sửa request, gửi lại, app bị đóng gói lại).
 - Lệnh artisan `login:env` (điền biến env vào `.env` + `.env.example`), `login:create-user`, `login:create-device-token`.
@@ -83,7 +83,7 @@ Lệnh thêm các biến của module vào cuối `.env.example` và `.env` (kh�
 |---|---|---|
 | `JWT_OPENSSL_DEVICE_SECRET` | `.env`: sinh ngẫu nhiên 32 ký tự; `.env.example`: trống | Khoá AES-256-CBC giải mã secret gửi lên `add-device`. **App mobile dùng chung khoá này** — project đang chạy thì giữ khoá cũ |
 | `AUTH_API_JWT_SECRET` | `.env`: sinh ngẫu nhiên 64 ký tự; `.env.example`: trống | Secret cho `LoginHelper::createJwtAuthUser()` |
-| `LOGIN_MODULE_HOME` | `/` | Route name hoặc URL sau khi login CMS |
+| `LOGIN_MODULE_HOME` | `login.admin` | Trang chuyển tới sau khi login CMS: **tên route** (vd `login.admin`) hoặc **đường dẫn** (vd `/admin`). Xem [Trang admin](#trang-admin) |
 | `LOGIN_MODULE_CMS_TITLE` | `"${APP_NAME} CMS"` | Tiêu đề CMS |
 | `LOGIN_MODULE_CMS_FOOTER` | `"Powered by CoreUI"` | Footer CMS |
 | `LOGIN_MODULE_ASSETS_URL` | `/modules/login` | URL assets đã publish |
@@ -94,6 +94,49 @@ Lệnh thêm các biến của module vào cuối `.env.example` và `.env` (kh�
 Biến có giá trị mặc định được ghi rõ giá trị thay vì để trống: `KEY=` rỗng trả về chuỗi rỗng chứ không lấy mặc định trong config (vd `LOGIN_MODULE_ATTESTATION_REQUIRE_VERIFIED_BOOT=` rỗng sẽ tắt kiểm tra bootloader).
 
 ## Sử dụng
+
+### Trang admin
+
+Sau khi login, module chuyển tới trang trong `LOGIN_MODULE_HOME` (mặc định `login.admin`).
+
+**Trang admin mặc định.** Module có sẵn trang `GET /admin` (tên route `login.admin`, cần login): layout CoreUI, sidebar hiện menu trong `cms.menu`; menu rỗng thì sidebar chỉ có **Đăng xuất** và trang hiện hướng dẫn thêm menu. Đổi đường dẫn bằng `web.admin_path` (vd `'cms'` → `/cms`), tắt bằng `'admin_page' => false` trong `config/login.php`.
+
+**`LOGIN_MODULE_HOME` nhận 2 dạng:**
+- **tên route** đã đăng ký, vd `login.admin`, `admin.dashboard`;
+- **đường dẫn**, vd `/admin`, `/cms/reports`.
+
+Giá trị không phải tên route sẽ được coi là đường dẫn: vd `.admin` thành `/.admin`, trang đó không tồn tại nên login xong ra **404**. Gặp 404 sau login thì kiểm tra `php artisan route:list` xem tên route/đường dẫn có đúng không.
+
+**Tự làm trang admin của project.** Module chỉ có trang admin mặc định + layout; các trang quản trị khác project tự tạo:
+
+1. Route (chỉ cần middleware `auth` — chưa login sẽ bị chuyển về `route('login')`):
+   ```php
+   // routes/web.php
+   Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
+       Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+   });
+   ```
+2. View kế thừa layout của module (mục [Layout CMS](#layout-cms)):
+   ```blade
+   {{-- resources/views/admin/reports/index.blade.php --}}
+   @extends('login::layouts.master')
+
+   @section('content')
+       <div class="body flex-grow-1 px-3">
+           <div class="container-lg">...</div>
+       </div>
+   @endsection
+   ```
+3. Thêm vào menu trong `config/login.php`:
+   ```php
+   'cms' => [
+       'menu' => [
+           ['label' => 'Dashboard', 'route' => 'login.admin', 'icon' => 'cil-speedometer'],
+           ['label' => 'Reports', 'route' => 'admin.reports.index', 'icon' => 'cil-chart'],
+       ],
+   ],
+   ```
+4. Muốn login xong vào thẳng trang của project: `LOGIN_MODULE_HOME=admin.reports.index`. Có dashboard riêng rồi thì tắt trang mặc định: `'admin_page' => false`.
 
 ### Layout CMS
 
@@ -127,7 +170,7 @@ Menu sidebar/header khai báo trong `config/login.php`:
 
 Item có `route` chưa đăng ký sẽ tự ẩn. Icon lấy theo tên trong CoreUI `free.svg`, dùng trong view: `<x-login::vendors.icon name="cil-user" />`.
 
-Route admin của project chỉ cần middleware `auth` — chưa login sẽ bị chuyển về `route('login')`.
+Route admin của project chỉ cần middleware `auth` — chưa login sẽ bị chuyển về `route('login')` (ví dụ đầy đủ ở mục [Trang admin](#trang-admin)).
 
 ### API auth
 
@@ -162,7 +205,9 @@ Token gửi qua header `Authorization: Bearer <token>` hoặc tham số `access_
 |---|---|---|
 | `web.enabled` / `api.enabled` | `true` | Tắt route web / API của module |
 | `web.admin_role` | `1` | Giá trị `users.role` được phép vào CMS |
-| `web.home` | `/` | Route name hoặc URL sau khi login |
+| `web.home` | `login.admin` | Tên route hoặc đường dẫn sau khi login (env `LOGIN_MODULE_HOME`) |
+| `web.admin_page` | `true` | Bật trang admin mặc định `login.admin`; `false` khi project tự làm trang admin |
+| `web.admin_path` | `admin` | Đường dẫn của trang admin mặc định |
 | `web.user_model` | `null` | Model cho `login:create-user` (mặc định `auth.providers.users.model`) |
 | `cms.title`, `cms.footer`, `cms.assets_url` | | Tiêu đề, footer, URL assets đã publish |
 | `api.prefix` | `api/v1/auth` | Prefix route add-device |
@@ -349,6 +394,24 @@ Tests nằm trong `tests/Feature` và `tests/Unit` (namespace `Modules\Login\Tes
 ```sh
 php artisan test --testsuite=Modules
 ```
+
+## Nâng cấp module
+
+Ở project đã cài module, lên version mới:
+
+```sh
+composer update huyct/login-module          # hoặc composer require huyct/login-module:^1.2
+php artisan migrate                         # migration mới (nếu có)
+php artisan login:env                       # chỉ thêm biến env mới, không sửa biến đã có
+php artisan optimize:clear                  # xoá cache config/route/view
+```
+
+`composer update` ghi đè toàn bộ `Modules/Login` (code, view, route, migration) nên phần mới có ngay. Những thứ **đã publish ra project thì không tự đổi**, kiểm tra thêm:
+
+- **`.env`**: `login:env` không sửa giá trị đã có. Khi version mới đổi giá trị mặc định (vd `LOGIN_MODULE_HOME` từ `/` thành `login.admin`), tự sửa trong `.env` nếu muốn dùng mặc định mới.
+- **`config/login.php`** (nếu đã `--tag=login-config`): key mới nằm trong khối đã có (vd `web.admin_page`, `web.admin_path`) không xuất hiện trong file của project — module tự dùng giá trị mặc định. Muốn chỉnh thì copy key đó từ `Modules/Login/config/config.php` sang, hoặc publish lại bằng `--force` (**ghi đè** các chỉnh sửa của project).
+- **View đã publish** (`--tag=login-views`, `resources/views/modules/login`): ưu tiên hơn view của module, nên không nhận giao diện mới. Publish lại bằng `--force` hoặc tự gộp thay đổi.
+- **Assets** (`public/modules/login`): khi version mới đổi CSS/JS, chạy `php artisan vendor:publish --tag=login-assets --force`.
 
 ## Publish module
 

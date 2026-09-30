@@ -22,7 +22,7 @@ class SetupEnv extends Command
     private const DEFAULTS = [
         'JWT_OPENSSL_DEVICE_SECRET' => '',
         'AUTH_API_JWT_SECRET' => '',
-        'LOGIN_MODULE_HOME' => '/',
+        'LOGIN_MODULE_HOME' => 'login.admin',
         'LOGIN_MODULE_CMS_TITLE' => '"${APP_NAME} CMS"',
         'LOGIN_MODULE_CMS_FOOTER' => '"Powered by CoreUI"',
         'LOGIN_MODULE_ASSETS_URL' => '/modules/login',

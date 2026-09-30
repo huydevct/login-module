@@ -10,4 +10,9 @@ Route::prefix('login')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    // Default trong code: config/login.php publish tu ban cu khong co 2 key nay (khoi 'web' bi thay ca khoi).
+    if (config('login.web.admin_page', true)) {
+        Route::get('/'.trim((string) config('login.web.admin_path', 'admin'), '/'), [AuthController::class, 'dashboard'])->name('login.admin');
+    }
 });

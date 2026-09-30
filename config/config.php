@@ -18,8 +18,13 @@ return [
         // Chi user co role nay moi dang nhap duoc CMS.
         'admin_role' => 1,
 
-        // Trang chuyen den sau khi login thanh cong: ten route hoac URL.
-        'home' => env('LOGIN_MODULE_HOME', '/'),
+        // Trang chuyen den sau khi login thanh cong: ten route (vd login.admin) hoac duong dan (vd /admin).
+        'home' => env('LOGIN_MODULE_HOME', 'login.admin'),
+
+        // Trang admin mac dinh cua module (route login.admin, layout CoreUI + menu cms.menu).
+        // Tat khi project tu lam trang admin rieng; doi admin_path neu /admin bi trung.
+        'admin_page' => true,
+        'admin_path' => 'admin',
 
         // Model user dung cho lenh login:create-user. null = auth.providers.users.model.
         'user_model' => null,

@@ -30,6 +30,14 @@ class AuthController
         return back()->withInput($request->only('email'))->with('error', 'Error Email or Password');
     }
 
+    /**
+     * Trang admin mac dinh: layout CoreUI + menu trong config login.cms.menu.
+     */
+    public function dashboard()
+    {
+        return view('login::pages.dashboard');
+    }
+
     public function logout()
     {
         Auth::logout();

@@ -54,7 +54,7 @@ class SetupEnvCommandTest extends TestCase
         $example = $this->read('.env.example');
         foreach ([$env, $example] as $content) {
             $this->assertStringContainsString("# Login module\n", $content);
-            $this->assertSame('/', $this->value($content, 'LOGIN_MODULE_HOME'));
+            $this->assertSame('login.admin', $this->value($content, 'LOGIN_MODULE_HOME'));
             $this->assertSame('"${APP_NAME} CMS"', $this->value($content, 'LOGIN_MODULE_CMS_TITLE'));
             $this->assertSame('"Powered by CoreUI"', $this->value($content, 'LOGIN_MODULE_CMS_FOOTER'));
             $this->assertSame('/modules/login', $this->value($content, 'LOGIN_MODULE_ASSETS_URL'));
@@ -104,7 +104,7 @@ class SetupEnvCommandTest extends TestCase
 
         $this->artisan('login:env')->assertSuccessful();
 
-        $this->assertSame('/', $this->value($this->read('.env'), 'LOGIN_MODULE_HOME'));
+        $this->assertSame('login.admin', $this->value($this->read('.env'), 'LOGIN_MODULE_HOME'));
     }
 
     public function test_second_run_changes_nothing(): void
