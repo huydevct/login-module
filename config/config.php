@@ -76,6 +76,43 @@ return [
         'blocked_devices_redis_key' => env('LOGIN_MODULE_BLOCKED_DEVICES_KEY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Android Keystore attestation
+    |--------------------------------------------------------------------------
+    |
+    | POST {api.prefix}/attest/challenge va /attest/register (sau auth.api) de
+    | dang ky public key cua key nam trong Keystore (TEE/StrongBox). Route can bao
+    | ve dung middleware ['auth.api', 'signed.device'].
+    |
+    */
+    'attestation' => [
+        'enabled' => true,
+        'middleware_alias' => 'signed.device',
+
+        /*
+         | package => danh sach SHA-256 cua cert ky app ma nguoi dung thuc su cai
+         | (Play App Signing: "App signing key certificate" trong Play Console).
+         | Chap nhan dang "AB:CD:..." hoac hex thuong. Package khong co o day -> tu choi.
+         | Vi du: 'com.cdt.game' => ['ab12...ef'],
+         */
+        'signature_digests' => [],
+
+        // Tu choi thiet bi mo khoa bootloader hoac verifiedBootState khac Verified (rootOfTrust).
+        // Tat khi can test tren may dev / emulator.
+        'require_verified_boot' => env('LOGIN_MODULE_ATTESTATION_REQUIRE_VERIFIED_BOOT', true),
+
+        // Bundle PEM root cua Google. null = file di kem module (resources/attestation/google_roots.pem).
+        'roots_path' => env('LOGIN_MODULE_ATTESTATION_ROOTS'),
+
+        'status_url' => 'https://android.googleapis.com/attestation/status',
+        'status_cache_ttl' => 86400,
+
+        // Thoi gian song cua challenge va cua so timestamp cua request ky (giay).
+        'challenge_ttl' => 300,
+        'timestamp_window' => 300,
+    ],
+
     'openssl' => [
         'device_secret' => env('JWT_OPENSSL_DEVICE_SECRET'),
     ],

@@ -16,10 +16,17 @@ class Device extends Model
         'platform',
         'last_login',
         'secret',
+        'public_key_pem',
+        'security_level',
+        'attested_at',
     ];
 
     protected $hidden = [
         'secret',
+    ];
+
+    protected $casts = [
+        'attested_at' => 'datetime',
     ];
 
     public function app()

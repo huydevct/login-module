@@ -4,9 +4,10 @@ Module cho [nwidart/laravel-modules](https://laravelmodules.com/docs/13/getting-
 
 - **CMS login**: trang `/login`, `/logout`, layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
 - **API auth cho thiết bị**: `POST /api/v1/auth/add-device` cấp JWT theo device, middleware `auth.api` để bảo vệ route API của project, `LoginHelper::AuthApi()` để lấy device/app hiện tại.
+- **Android Keystore attestation**: đăng ký public key của key nằm trong phần cứng (TEE/StrongBox) qua Key Attestation, middleware `signed.device` kiểm tra chữ ký từng request (chống sửa request, gửi lại, app bị đóng gói lại).
 - Lệnh artisan `login:create-user`, `login:create-device-token`.
 
-Yêu cầu: PHP ^8.2, Laravel 11+, `nwidart/laravel-modules` ^11 | ^12 | ^13.
+Yêu cầu: PHP ^8.2 (ext `openssl`), Laravel 11+, `nwidart/laravel-modules` ^11 | ^12 | ^13. Dùng attestation thì cache store phải là Redis (`Cache::add` nguyên tử).
 
 ## Cài đặt
 
@@ -158,6 +159,152 @@ Token gửi qua header `Authorization: Bearer <token>` hoặc tham số `access_
 
 Views có thể override: `php artisan vendor:publish --tag=login-views` → `resources/views/modules/login`.
 
+## Android Keystore attestation
+
+Mỗi điện thoại sinh một private key trong phần cứng (TEE/StrongBox); backend chỉ lưu public key. Lúc đăng ký, backend kiểm tra chuỗi certificate Key Attestation do Google ký để chắc key nằm trong phần cứng thật và thuộc đúng app. Sau đó mọi request cần bảo vệ phải được ký bằng key đó.
+
+Google chỉ được gọi lúc đăng ký (danh sách cert bị thu hồi, cache 24h). Kiểm tra chữ ký từng request chạy offline.
+
+### Cấu hình
+
+Publish config (`--tag=login-config`) rồi khai báo digest cert ký app theo từng package:
+
+```php
+// config/login.php
+'attestation' => [
+    'signature_digests' => [
+        'com.cdt.game' => ['AB:CD:...:EF'],   // chấp nhận dạng Play Console hoặc hex thường
+    ],
+],
+```
+
+- Package phải trùng `apps.package_id` của thiết bị (package gửi lúc `add-device`). Package không có trong map → từ chối đăng ký.
+- Digest là SHA-256 của **cert ký app mà người dùng thực sự cài**: dùng Play App Signing thì lấy "App signing key certificate" trong Play Console → App integrity (**không** phải upload key); tự ký thì `apksigner verify --print-certs app.apk`. Khi đổi key ký, thêm digest mới vào mảng trước khi phát hành.
+- Root certificate của Google đi kèm module ở `resources/attestation/google_roots.pem`. Cập nhật khi Google công bố root mới:
+  ```sh
+  curl -s https://android.googleapis.com/attestation/root \
+    | php -r 'echo implode("\n", json_decode(stream_get_contents(STDIN), true)), "\n";' > google_roots.pem
+  ```
+  rồi trỏ `LOGIN_MODULE_ATTESTATION_ROOTS=/đường/dẫn/google_roots.pem` (hoặc cập nhật module).
+
+| Key | Mặc định | Ý nghĩa |
+|---|---|---|
+| `attestation.enabled` | `true` | Bật route attest + alias middleware |
+| `attestation.middleware_alias` | `signed.device` | Tên middleware kiểm tra chữ ký; `null` để không đăng ký |
+| `attestation.signature_digests` | `[]` | `package => [digest, ...]` |
+| `attestation.require_verified_boot` | `true` | Từ chối máy mở khoá bootloader / `verifiedBootState` khác Verified. Env `LOGIN_MODULE_ATTESTATION_REQUIRE_VERIFIED_BOOT=false` khi test trên máy dev, emulator |
+| `attestation.roots_path` | file đi kèm module | Env `LOGIN_MODULE_ATTESTATION_ROOTS` |
+| `attestation.challenge_ttl` | `300` | Thời gian sống của challenge (giây) |
+| `attestation.timestamp_window` | `300` | Độ lệch cho phép của `X-Timestamp` (giây) |
+
+### Đăng ký thiết bị (1 lần: cài app, đổi máy, xoá data)
+
+Cả hai API cần header `Authorization: Bearer <access_token>` lấy từ `add-device`.
+
+1. `POST /api/v1/auth/attest/challenge` → `{"data": {"challenge": "<base64 32 byte>"}}`.
+2. App tạo key trong Keystore: EC `secp256r1`, `PURPOSE_SIGN`, `DIGEST_SHA256`, `setAttestationChallenge(<challenge đã decode>)`, ưu tiên `setIsStrongBoxBacked(true)` (lỗi `StrongBoxUnavailableException` thì bỏ, dùng TEE).
+3. `KeyStore.getCertificateChain(alias)` → base64 từng cert (DER), leaf đứng đầu → `POST /api/v1/auth/attest/register` với `{"chain": ["...", "...", ...]}`.
+   - `200 {"data": {"security_level": "TEE"|"StrongBox"}}`
+   - `400` challenge không có / hết hạn / đã dùng → xin challenge mới.
+   - `403 {"data": {"message": "Attestation: <lý do>"}}` → chain không hợp lệ (kể cả máy đã mở khoá bootloader khi bật `require_verified_boot`).
+
+Challenge chỉ dùng 1 lần, sống 5 phút. Đăng ký lại sẽ thay public key cũ.
+
+### Ký từng request
+
+Bảo vệ route của project:
+
+```php
+Route::middleware(['auth.api', 'signed.device', 'throttle:60,1'])->group(function () {
+    Route::post('/coins/add', [CoinController::class, 'add']);
+});
+```
+
+`signed.device` phải đứng **sau** `auth.api`. App gửi thêm 3 header:
+
+| Header | Nội dung |
+|---|---|
+| `X-Timestamp` | epoch **giây** (không phải mili-giây) |
+| `X-Nonce` | chuỗi ngẫu nhiên mới cho mỗi request, tối đa 64 ký tự (vd 32 ký tự hex) |
+| `X-Signature` | base64 chữ ký `SHA256withECDSA` (DER) bằng key trong Keystore |
+
+Chuỗi được ký, nối bằng `\n`, **không** có `\n` cuối:
+
+```
+POST                       method viết hoa
+/api/coins/add             path (xem ghi chú bên dưới)
+amount=10&x=1              query string gốc (phần sau '?', giữ nguyên như trong URL); rỗng nếu không có
+1727668800                 X-Timestamp
+9f2c...                    X-Nonce
+123                        device id (data.device.id từ add-device)
+4                          app id (data.device.app_id từ add-device)
+e3b0c442...                SHA-256 hex chữ thường của body gốc (body rỗng → hash của chuỗi rỗng)
+```
+
+Ghi chú về path:
+- Tính **từ gốc ứng dụng Laravel**: app chạy ở `https://host/sub/` thì request `https://host/sub/api/coins/add` ký `/api/coins/add`.
+- Giữ **dạng đã encode** như trong URL (OkHttp: `url.encodedPath`, không dùng `url.path`).
+- **Không có `/` cuối** (Laravel bỏ dấu `/` cuối); gốc ứng dụng ký là `/`.
+
+Body phải là JSON hoặc dạng khác đọc được nguyên văn; **không hỗ trợ `multipart/form-data`** (PHP không cho đọc body gốc của multipart nên không ký được) — upload file thì làm ở API riêng hoặc gửi base64 trong JSON.
+
+Lỗi trả `{"code", "message", "status"}`:
+
+| HTTP | `status` | Nguyên nhân |
+|---|---|---|
+| 401 | `not_authenticated` | Route thiếu `auth.api` trước `signed.device` |
+| 400 | `unsupported_content_type` | Body `multipart/*` |
+| 400 | `missing_signature_header` | Thiếu/sai header |
+| 401 | `request_expired` | `X-Timestamp` lệch quá 300 giây |
+| 403 | `device_not_attested` | Thiết bị chưa đăng ký key → chạy lại bước đăng ký |
+| 401 | `invalid_signature` | Chữ ký sai (body/path/query/method bị sửa, hoặc app dựng chuỗi khác server) |
+| 401 | `replayed_request` | Nonce đã dùng |
+
+Controller lấy thiết bị đã xác minh qua `$request->attributes->get('login_device')`.
+
+### Viết controller nghiệp vụ
+
+Chữ ký chỉ chứng minh request đến từ app thật trên máy thật; controller vẫn phải:
+
+- **Server tự quyết giá trị** (số coin, giá item), không lấy số từ request.
+- **Idempotent** theo `request_id` (UUID do app sinh): bảng giao dịch có unique `(device_id, request_id)`, dùng `firstOrCreate` và chỉ cộng khi `wasRecentlyCreated`.
+- Chạy trong `DB::transaction`.
+
+```php
+private const REWARDS = ['watch_ad' => 10, 'daily_login' => 5];
+
+public function add(Request $request)
+{
+    $data = $request->validate([
+        'reason' => 'required|in:'.implode(',', array_keys(self::REWARDS)),
+        'request_id' => 'required|uuid',
+    ]);
+    $device = $request->attributes->get('login_device');
+    $amount = self::REWARDS[$data['reason']];
+
+    return DB::transaction(function () use ($device, $data, $amount) {
+        $tx = CoinTransaction::firstOrCreate(
+            ['device_id' => $device->id, 'request_id' => $data['request_id']],
+            ['reason' => $data['reason'], 'amount' => $amount],
+        );
+        if ($tx->wasRecentlyCreated) {
+            // cộng coin cho tài khoản gắn với $device
+        }
+
+        return ['added' => $tx->wasRecentlyCreated ? $amount : 0];
+    });
+}
+```
+
+### Checklist trước production
+
+- [ ] `signature_digests` đúng app release (Play App Signing → app signing key).
+- [ ] `google_roots.pem` có đủ root hiện hành; có lịch kiểm tra cập nhật.
+- [ ] Cache store là Redis.
+- [ ] Toàn bộ API chạy qua HTTPS.
+- [ ] **Đã thử đăng ký với chain thật từ thiết bị (TEE và StrongBox)**. Test của module dùng chain tự tạo nên chưa chứng minh được việc đọc chain thật.
+- [ ] Rate limit (`throttle`) cho API nhạy cảm.
+
 ## Chuyển từ module `Login` + `CoreUI` cũ
 
 | Cũ | Mới |
@@ -178,7 +325,7 @@ Views có thể override: `php artisan vendor:publish --tag=login-views` → `re
 
 ## Test
 
-Tests nằm trong `tests/Feature` (namespace `Modules\Login\Tests`, extends `Tests\TestCase` của project). Chạy trong project đã cài module, thêm vào `phpunit.xml`:
+Tests nằm trong `tests/Feature` và `tests/Unit` (namespace `Modules\Login\Tests`, extends `Tests\TestCase` của project; helper sinh chain attestation giả ở `tests/Support`). Project cần merge-plugin như bước cài đặt để nạp `autoload-dev` của module (`composer update --lock` sau khi cấu hình). Chạy trong project đã cài module, thêm vào `phpunit.xml`:
 
 ```xml
 <testsuite name="Modules">

@@ -8,6 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Modules\Login\Console\CreateDeviceToken;
 use Modules\Login\Console\CreateUserCms;
 use Modules\Login\Http\Middleware\ApiAuthenticate;
+use Modules\Login\Http\Middleware\VerifyDeviceSignature;
 
 class LoginServiceProvider extends ServiceProvider
 {
@@ -94,9 +95,16 @@ class LoginServiceProvider extends ServiceProvider
 
     protected function registerMiddleware(): void
     {
+        $router = $this->app->make(Router::class);
+
         $alias = config('login.api.middleware_alias');
         if (! empty($alias)) {
-            $this->app->make(Router::class)->aliasMiddleware($alias, ApiAuthenticate::class);
+            $router->aliasMiddleware($alias, ApiAuthenticate::class);
+        }
+
+        $signedAlias = config('login.attestation.middleware_alias');
+        if (config('login.attestation.enabled') && ! empty($signedAlias)) {
+            $router->aliasMiddleware($signedAlias, VerifyDeviceSignature::class);
         }
     }
 

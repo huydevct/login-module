@@ -45,6 +45,9 @@ class ApiAuthenticate
             return Response::json(['code' => 403, 'message' => 'Account is deactivated,[ApiAuthenticate]'], 403);
         }
 
+        // Gan vao chinh request nay (khong dua vao singleton AuthApi, an toan voi worker chay lau).
+        $request->attributes->set('login_auth', ['device_id' => $device_id, 'app_id' => $auth->getAppId()]);
+
         return $next($request);
     }
 }
