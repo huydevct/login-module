@@ -2,7 +2,15 @@
 @php
     $href = null;
     if (! empty($item['route'])) {
-        $href = \Illuminate\Support\Facades\Route::has($item['route']) ? route($item['route']) : null;
+        // Bao loi thay vi an item: sai ten route trong config phai lo ra ngay khi dev.
+        if (! \Illuminate\Support\Facades\Route::has($item['route'])) {
+            throw new \Symfony\Component\Routing\Exception\RouteNotFoundException(sprintf(
+                "Menu '%s': route [%s] chưa được đăng ký. Tạo route này hoặc sửa login.cms.menu / login.cms.header_menu trong config/login.php (kiểm tra bằng php artisan route:list).",
+                $item['label'] ?? '',
+                $item['route']
+            ));
+        }
+        $href = route($item['route']);
     } elseif (! empty($item['url'])) {
         $href = url($item['url']);
     }

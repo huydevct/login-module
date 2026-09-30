@@ -39,7 +39,7 @@ return [
 
         /*
          | Menu sidebar. Moi item: label, icon (ten icon CoreUI free.svg) va route
-         | (ten route) hoac url. Item co route chua dang ky se bi an.
+         | (ten route) hoac url. Item co route chua dang ky se bao loi RouteNotFoundException khi render.
          | Vi du: ['label' => 'Dashboard', 'route' => 'admin.dashboard', 'icon' => 'cil-speedometer']
          */
         'menu' => [],

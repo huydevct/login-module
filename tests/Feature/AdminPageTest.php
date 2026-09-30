@@ -75,6 +75,28 @@ class AdminPageTest extends TestCase
             ->assertDontSee('config/login.php');
     }
 
+    public function test_menu_item_with_unregistered_route_fails_loudly(): void
+    {
+        config(['login.cms.menu' => [['label' => 'Analytic', 'route' => 'admin.analytic.index']]]);
+        $this->withoutExceptionHandling();
+
+        $this->expectException(\Illuminate\View\ViewException::class);
+        $this->expectExceptionMessage("Menu 'Analytic': route [admin.analytic.index] chưa được đăng ký");
+
+        $this->actingAs($this->createAdmin())->get('/admin');
+    }
+
+    public function test_header_menu_item_with_unregistered_route_fails_loudly(): void
+    {
+        config(['login.cms.header_menu' => [['label' => 'Reports', 'route' => 'admin.reports.index']]]);
+        $this->withoutExceptionHandling();
+
+        $this->expectException(\Illuminate\View\ViewException::class);
+        $this->expectExceptionMessage("Menu 'Reports': route [admin.reports.index] chưa được đăng ký");
+
+        $this->actingAs($this->createAdmin())->get('/admin');
+    }
+
     public function test_admin_path_is_configurable(): void
     {
         $this->reloadModuleRoutes(['login.web.admin_path' => 'cms']);

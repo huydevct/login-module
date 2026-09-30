@@ -127,7 +127,7 @@ Giá trị không phải tên route sẽ được coi là đường dẫn: vd `.
        </div>
    @endsection
    ```
-3. Thêm vào menu trong `config/login.php`:
+3. Thêm vào menu trong `config/login.php` (route phải đăng ký trước, nếu không trang CMS sẽ báo lỗi):
    ```php
    'cms' => [
        'menu' => [
@@ -168,7 +168,7 @@ Menu sidebar/header khai báo trong `config/login.php`:
 ],
 ```
 
-Item có `route` chưa đăng ký sẽ tự ẩn. Icon lấy theo tên trong CoreUI `free.svg`, dùng trong view: `<x-login::vendors.icon name="cil-user" />`.
+Item có `route` chưa đăng ký sẽ **báo lỗi** `RouteNotFoundException` khi render trang (vd `Menu 'Analytic': route [admin.analytic.index] chưa được đăng ký`) — tạo route đó trước, hoặc sửa tên route trong config (`php artisan route:list` để xem tên route). Icon lấy theo tên trong CoreUI `free.svg`, dùng trong view: `<x-login::vendors.icon name="cil-user" />`.
 
 Route admin của project chỉ cần middleware `auth` — chưa login sẽ bị chuyển về `route('login')` (ví dụ đầy đủ ở mục [Trang admin](#trang-admin)).
 

@@ -21,7 +21,6 @@ class WebLoginTest extends TestCase
             'login.web.home' => 'login.test.admin',
             'login.cms.menu' => [
                 ['label' => 'Admin Home', 'route' => 'login.test.admin', 'icon' => 'cil-speedometer'],
-                ['label' => 'Missing Route', 'route' => 'does.not.exist'],
             ],
         ]);
     }
@@ -52,7 +51,7 @@ class WebLoginTest extends TestCase
         $this->post('/login', ['email' => 'admin@example.com', 'password' => 'secret123'])
             ->assertRedirect(route('login.test.admin'));
 
-        $this->get('/_login/admin')->assertOk()->assertSee('Admin Home')->assertDontSee('Missing Route');
+        $this->get('/_login/admin')->assertOk()->assertSee('Admin Home');
     }
 
     public function test_non_admin_cannot_login(): void
