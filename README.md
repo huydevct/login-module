@@ -223,6 +223,77 @@ Mỗi điện thoại sinh một private key trong phần cứng (TEE/StrongBox)
 
 Google chỉ được gọi lúc đăng ký (danh sách cert bị thu hồi, cache 24h). Kiểm tra chữ ký từng request chạy offline.
 
+### Cách hoạt động
+
+```
+ĐĂNG KÝ (1 lần / thiết bị)
+  App ── POST add-device ─────────────────────────────► BE: JWT (device_id, app_id)
+  App ── POST attest/challenge  (Bearer JWT) ─────────► BE: random_bytes(32) → cache login:attest:{device_id}, 5 phút
+  App ◄──────────────────────────── {challenge} ───────
+  App: tạo key EC trong Keystore kèm challenge → KeyStore.getCertificateChain()
+  App ── POST attest/register {chain} (Bearer JWT) ──► BE: lấy + xoá challenge → AttestationVerifier (bên dưới)
+                                                          → lưu public key vào devices.public_key_pem
+MỖI REQUEST CẦN BẢO VỆ
+  App: ký chuỗi (method, path, query, ts, nonce, device_id, app_id, sha256(body)) bằng key trong Keystore
+  App ── request + Bearer JWT + X-Timestamp/X-Nonce/X-Signature ──►
+         auth.api (JWT) → signed.device (chữ ký, offline) → controller của project
+```
+
+**Backend tin dữ liệu từ đâu:**
+
+| Dữ liệu | Lấy từ | Không lấy từ |
+|---|---|---|
+| Thiết bị (`device_id`, `app_id`) | JWT đã được `auth.api` xác minh | Body / header do app gửi |
+| Package mong đợi | `apps.package_id` của thiết bị (package gửi lúc `add-device`) | Body của `attest/register` |
+| Digest cert ký app được phép | `login.attestation.signature_digests[package]` | Chain do app gửi |
+| Root tin cậy | `resources/attestation/google_roots.pem` (hoặc `roots_path`) | Chain do app gửi |
+| Public key kiểm tra chữ ký | `devices.public_key_pem` (chỉ ghi sau khi chain qua đủ các bước) | Request |
+
+#### Kiểm tra chain lúc đăng ký (`AttestationVerifier`)
+
+Chain là mảng certificate DER base64, **leaf đứng đầu**, cert cuối là root. Các bước chạy theo thứ tự, sai ở bước nào thì dừng và trả `403 {"data": {"message": "Attestation: <lý do>"}}`:
+
+| # | Kiểm tra | Lý do trả về khi sai | Chặn được |
+|---|---|---|---|
+| 0 | Mỗi phần tử decode base64 được; chain ≥ 2 cert | `Certificate #i không hợp lệ` / `Chain quá ngắn` | Dữ liệu rác |
+| 1a | Cert `i` được ký bởi cert `i+1`, cert cuối tự ký | `Chữ ký certificate #i không hợp lệ` | Chain bị ghép, sửa |
+| 1b | Mọi cert từ #1 trở đi là CA (`basicConstraints CA:TRUE`, `keyUsage` nếu có phải có Certificate Sign) | `Certificate #i không phải CA` | Key phần cứng **thật** của app khác ký một cert giả (key phần mềm + extension tự viết) rồi đặt lên đầu chain |
+| 1c | Chỉ leaf mang extension attestation | `Certificate #i có extension attestation` | Như trên |
+| 2 | Public key của cert cuối trùng một root của Google (so public key, không so cả cert — Google từng phát hành lại root với cùng key) | `Chain không kết thúc ở root của Google` | Chain tự tạo |
+| 3 | Không serial nào nằm trong danh sách thu hồi của Google (`/attestation/status`, cache 24h; Google lỗi thì **từ chối**) | `Certificate #i đã bị Google thu hồi` / `Không lấy được danh sách thu hồi của Google` | Key/máy đã bị lộ |
+| 4 | Đọc extension `1.3.6.1.4.1.11129.2.1.17` (`KeyDescription`) ở leaf | `Không có extension attestation` / `Thiếu attestationApplicationId` / `Không đọc được package name` | Cert không phải attestation |
+| 5a | `attestationChallenge` == challenge đã cấp (so sánh hằng thời gian) | `Challenge không khớp` | Dùng lại chain cũ |
+| 5b | `attestationSecurityLevel` **và** `keyMintSecurityLevel` là TEE (1) hoặc StrongBox (2) | `Key không nằm trong phần cứng` | Key sinh bằng phần mềm / giả lập |
+| 5c | `rootOfTrust`: `deviceLocked = true` và `verifiedBootState = Verified` (tắt bằng `require_verified_boot`) | `Thiết bị đã mở khoá bootloader hoặc hệ điều hành không nguyên bản` | Máy root / ROM tự build: app thật bị hook để ký request tuỳ ý |
+| 5d | Package trong attestation == package của thiết bị | `Sai package` | App khác, hoặc thiết bị app A đăng ký bằng app B |
+| 5e | Một trong các digest cert ký app nằm trong `signature_digests[package]` (package không có trong map → luôn sai) | `Sai chữ ký app (có thể app đã bị đóng gói lại)` | App bị sửa rồi ký lại (repackage) |
+| 6 | Lấy public key của leaf → `devices.public_key_pem`, `security_level`, `attested_at` | — | — |
+
+Trước khi gọi verifier, controller trả `400` nếu challenge không có / hết hạn / đã dùng (challenge bị **xoá ngay khi đọc**, đăng ký thất bại cũng phải xin challenge mới), và `403 Attestation: Thiết bị không gắn với app` nếu thiết bị không có `app_id`. Đăng ký lại thành công sẽ **thay** public key cũ (cài lại app, xoá data).
+
+#### Kiểm tra mỗi request (`signed.device`)
+
+Chạy sau `auth.api`, từ rẻ đến đắt; sai ở bước nào thì dừng (mã lỗi ở bảng [Ký từng request](#ký-từng-request)):
+
+1. Request có thông tin thiết bị do `auth.api` gắn **cho chính request đó** (`not_authenticated`) — không đọc biến tĩnh `AuthApi`, an toàn với worker chạy lâu (Octane, queue).
+2. Body không phải `multipart/*` (`unsupported_content_type`) — PHP không cho đọc body gốc của multipart nên không ký được.
+3. Đủ `X-Timestamp` (chỉ chữ số), `X-Nonce` (1–64 ký tự), `X-Signature` (`missing_signature_header`).
+4. `|now − X-Timestamp| ≤ 300 giây` (`request_expired`).
+5. Thiết bị đã có `public_key_pem` (`device_not_attested`).
+6. Dựng lại chuỗi ký từ request thật và `openssl_verify` (ECDSA-SHA256) bằng public key đã lưu (`invalid_signature`).
+7. Đánh dấu nonce `login:nonce:{device_id}:{nonce}` bằng `Cache::add` (nguyên tử trên Redis, sống 600 giây) — đã có thì `replayed_request`. Nonce chỉ bị đánh dấu **sau** khi chữ ký đúng, nên request giả không "đốt" được nonce của request thật.
+
+Qua đủ 7 bước, thiết bị được gắn vào `$request->attributes->get('login_device')` rồi request chạy vào controller.
+
+**Dữ liệu được lưu:**
+
+| Ở đâu | Nội dung | Thời gian sống |
+|---|---|---|
+| `devices.public_key_pem`, `security_level`, `attested_at` | Public key đã attest, `TEE`/`StrongBox`, lần attest gần nhất | Đến khi đăng ký lại |
+| Cache `login:attest:{device_id}` | Challenge (base64) | `challenge_ttl` (300 giây), xoá khi đọc |
+| Cache `login:nonce:{device_id}:{nonce}` | Nonce đã dùng | `timestamp_window × 2` (600 giây) |
+| Cache `login:attest:google_status` | Danh sách serial bị Google thu hồi | `status_cache_ttl` (24 giờ) |
+
 ### Cấu hình
 
 Publish config (`--tag=login-config`) rồi khai báo digest cert ký app theo từng package:
