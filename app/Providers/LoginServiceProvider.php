@@ -5,6 +5,7 @@ namespace Modules\Login\Providers;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Modules\Login\Console\BackfillDeviceHash;
 use Modules\Login\Console\CreateDeviceToken;
 use Modules\Login\Console\CreateUserCms;
 use Modules\Login\Console\SetupEnv;
@@ -45,6 +46,7 @@ class LoginServiceProvider extends ServiceProvider
             CreateUserCms::class,
             CreateDeviceToken::class,
             SetupEnv::class,
+            BackfillDeviceHash::class,
         ]);
     }
 

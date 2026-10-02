@@ -156,7 +156,7 @@ KOTLIN;
         <code>secret = base64(iv 16 byte + AES-256-CBC(json))</code>, khoá là <code>JWT_OPENSSL_DEVICE_SECRET</code> của server (app giữ cùng khoá).
         <code>json</code> gồm <code>client_id</code> (định danh ổn định của máy, vd <code>ANDROID_ID</code>), <code>platform</code> (<code>android</code>/<code>ios</code>),
         <code>package_id</code>, <code>time</code> (epoch giây — secret hết hạn sau {{ $secretTtl }} giây khi server tắt debug).
-        Cùng <code>client_id</code> + package luôn trả về cùng thiết bị.
+        Cùng <code>client_id</code> + package luôn trả về cùng thiết bị; <code>client_id</code> <strong>không phân biệt hoa/thường</strong> và bỏ khoảng trắng đầu/cuối, nên app phải gửi giá trị ổn định (không tự sinh lại mỗi lần cài).
     </p>
     <pre class="bg-light border rounded p-3 small mb-4"><code>{{ $secretCode }}</code></pre>
 

@@ -90,14 +90,20 @@ class DeviceGet
             $devices->where('active', $active);
         }
 
-        $client_id = Request::get('client_id', null);
-        if ($client_id != null) {
-            $devices->where('client_id_md5', md5(trim($client_id)));
-        }
-
         $app_id = Request::get('app_id', null);
         if ($app_id != null) {
             $devices->where('app_id', $app_id);
+        }
+
+        $client_id = Request::get('client_id', null);
+        if ($client_id != null) {
+            if ($app_id != null) {
+                // Theo device_id_hash (co index); nhan ca client_id co / khong co hau to "_{app_id}"
+                $devices->forDeviceId(DeviceSet::storedDeviceId((string) $client_id, (int) $app_id)['device_id'], (int) $app_id);
+            } else {
+                // Thieu app_id thi khong bam duoc: so khop nguyen van cot client_id (khong index, trang admin it dung)
+                $devices->where('client_id', trim((string) $client_id));
+            }
         }
 
         $dateFilter = Request::get('datefilter', null);

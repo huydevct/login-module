@@ -209,6 +209,29 @@ Route::middleware('auth.api')->group(function () {
 
 Token gửi qua header `Authorization: Bearer <token>` hoặc tham số `access_token`.
 
+### Định danh thiết bị (`device_id_hash`)
+
+Thiết bị được nhận diện bằng cặp `(app_id, client_id)`, tra cứu qua cột `devices.device_id_hash` — `BINARY(16)` `UNIQUE` (thiết kế chi tiết: `docs/device-id-storage.md`).
+
+- Hash = `md5(lower(trim(app_id)) . ':' . lower(trim(device_id)), raw)` — 16 byte. **Mọi** chỗ đọc/ghi hash đi qua `Modules\Login\Services\DeviceService\DeviceIdHasher` (`hashDevice()`, `hashHex()` để log, `VERSION`). Dấu `:` để `(1, "2abc")` và `(12, "abc")` không trùng nhau.
+- `device_id` = `client_id` app gửi lên sau khi lọc (`StringHelper::filter`); app trong `api.raw_client_id_app_ids` giữ nguyên (chỉ trim).
+- **`client_id` không phân biệt hoa/thường, bỏ khoảng trắng đầu/cuối**: `ABC` và ` abc ` là cùng một thiết bị. Cùng `client_id` ở 2 app khác nhau là 2 thiết bị.
+- Cột `client_id` vẫn lưu định dạng cũ (`<device_id>_<app_id>`, app raw: `<device_id>`); `client_id_md5` vẫn được ghi để quay về bản cũ được — sẽ bỏ ở bản sau.
+- Tra cứu trong code của project: `Device::forDeviceId($deviceId, $appId)->first()` (không tự `md5()`). Cột hash bị ẩn khỏi JSON (`$hidden`) vì không phải UTF-8 hợp lệ. Xem hex khi debug: `SELECT * FROM devices WHERE device_id_hash = UNHEX('…')` với `DeviceIdHasher::hashHex()`.
+- Đăng ký (`add-device`): tìm theo hash → dòng cũ chưa có hash thì tìm theo `client_id_md5` và điền hash → chưa có thì tạo mới bằng `createOrFirst` (2 request song song, đọc từ replica trễ, hay máy chạy code cũ trong lúc deploy đều ra cùng 1 thiết bị, không lỗi 500). Lỗi DB trả `500 Register device error!` (chi tiết chỉ hiện khi `APP_DEBUG=true` và message là UTF-8 hợp lệ).
+
+Điền hash cho thiết bị đã có:
+
+```sh
+php artisan login:backfill-device-hash              # chỉ dòng chưa có hash, chạy lại được
+php artisan login:backfill-device-hash --chunk=5000 # lô lớn hơn (mặc định 1000)
+php artisan login:backfill-device-hash --all        # tính lại tất cả (sau khi tăng DeviceIdHasher::VERSION)
+```
+
+Lệnh duyệt id tăng dần: dòng **cũ nhất** nhận hash; dòng trùng hash sau chuẩn hoá (vd `ABC_1` và `abc_1`) giữ `NULL` và được liệt kê (`#id trùng hash với #id`) — JWT của chúng vẫn dùng được tới khi hết hạn, lần `add-device` sau sẽ nhận thiết bị cũ nhất (có thể phải attest lại). Dòng `client_id` không có hậu tố `_<app_id>` mong đợi cũng được liệt kê.
+
+Trang admin (`DeviceGet::getDeviceByAdmin`): lọc `client_id` + `app_id` → theo hash (nhận cả `client_id` có/không hậu tố); chỉ `client_id` → so khớp nguyên văn cột `client_id`.
+
 ### Config chính (`config/login.php`)
 
 | Key | Mặc định | Ý nghĩa |
@@ -520,7 +543,10 @@ composer update huyct/login-module          # hoặc composer require huyct/logi
 php artisan migrate                         # migration mới (nếu có)
 php artisan login:env                       # chỉ thêm biến env mới, không sửa biến đã có
 php artisan optimize:clear                  # xoá cache config/route/view
+php artisan login:backfill-device-hash      # lên bản có device_id_hash: điền hash cho thiết bị cũ
 ```
+
+Lên bản có `device_id_hash`: chạy `migrate` (chỉ thêm 1 cột + 1 index) **trước** khi deploy code mới, rồi chạy `login:backfill-device-hash` (lúc nào cũng được, kể cả khi đang có traffic — thiết bị cũ đăng ký lại cũng tự được điền hash). Đọc báo cáo dòng trùng / sai định dạng ở cuối lệnh.
 
 `composer update` ghi đè toàn bộ `Modules/Login` (code, view, route, migration) nên phần mới có ngay. Những thứ **đã publish ra project thì không tự đổi**, kiểm tra thêm:
 

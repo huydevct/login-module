@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Login\Helpers\LoginHelper;
 use Modules\Login\Models\App;
 use Modules\Login\Models\Device;
+use Modules\Login\Services\DeviceService\DeviceIdHasher;
 use Tests\TestCase;
 
 class ApiAuthTest extends TestCase
@@ -61,30 +62,58 @@ class ApiAuthTest extends TestCase
 
     public function test_add_device_survives_concurrent_registration_of_same_client(): void
     {
-        // Request khac (ket noi khac, da commit) chen cung client_id ngay SAU cau SELECT tim device
+        // Request khac (ket noi khac, da commit) tao cung thiet bi ngay SAU cau SELECT cuoi cung
         // va TRUOC buoc insert: 2 request add-device song song, hoac SELECT doc tu replica bi tre.
-        $concurrentId = null;
-        DB::listen(function (QueryExecuted $query) use (&$concurrentId) {
-            if ($concurrentId !== null || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'devices')
+        $concurrentId = $this->insertConcurrentlyBeforeInsert(withHash: true);
+
+        $response = $this->postJson('/api/v1/auth/add-device', ['secret' => $this->secret()]);
+
+        $response->assertOk()->assertJsonPath('data.device.id', $concurrentId());
+        $this->assertSame(1, Device::count());
+        $this->getJson('/_login/me', ['Authorization' => 'Bearer '.$response->json('data.access_token')])
+            ->assertOk()->assertJson(['device_id' => $concurrentId()]);
+    }
+
+    public function test_add_device_survives_concurrent_registration_from_old_code_during_deploy(): void
+    {
+        // Deploy cuon chieu: may chay code cu tao cung thiet bi (chi co client_id_md5, chua co hash).
+        $concurrentId = $this->insertConcurrentlyBeforeInsert(withHash: false);
+
+        $response = $this->postJson('/api/v1/auth/add-device', ['secret' => $this->secret()]);
+
+        $response->assertOk()->assertJsonPath('data.device.id', $concurrentId());
+        $this->assertSame(1, Device::count());
+        $this->assertNotNull(Device::findOrFail($concurrentId())->device_id_hash);
+    }
+
+    /**
+     * Chen thiet bi "client-abc" cua app com.example.app ngay sau cau SELECT cuoi cung truoc INSERT
+     * (tim du phong theo client_id_md5) — khe hep nhat cua race condition.
+     *
+     * @return \Closure(): int id dong vua chen
+     */
+    private function insertConcurrentlyBeforeInsert(bool $withHash): \Closure
+    {
+        $id = null;
+        DB::listen(function (QueryExecuted $query) use (&$id, $withHash) {
+            if ($id !== null || ! str_starts_with($query->sql, 'select') || ! str_contains($query->sql, 'devices')
                 || ! str_contains($query->sql, 'client_id_md5')) {
                 return;
             }
-            $concurrentId = 0;   // chan de quy: cac query ben duoi cung phat QueryExecuted
+            $id = 0;   // chan de quy: cac query ben duoi cung phat QueryExecuted
             $appId = App::where('package_id', 'com.example.app')->value('id');
             $client = "client-abc_{$appId}";
-            $concurrentId = DB::table('devices')->insertGetId([
+            $id = DB::table('devices')->insertGetId([
                 'name' => 'Device_other', 'client_id' => $client, 'app_id' => $appId, 'client_id_md5' => md5($client),
+                'device_id_hash' => $withHash ? DeviceIdHasher::hashDevice($appId, 'client-abc') : null,
                 'platform' => 1, 'last_login' => time(), 'secret' => str_repeat('s', 32),
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         });
 
-        $response = $this->postJson('/api/v1/auth/add-device', ['secret' => $this->secret()]);
-
-        $response->assertOk()->assertJsonPath('data.device.id', $concurrentId);
-        $this->assertSame(1, Device::count());
-        $this->getJson('/_login/me', ['Authorization' => 'Bearer '.$response->json('data.access_token')])
-            ->assertOk()->assertJson(['device_id' => $concurrentId]);
+        return function () use (&$id): int {
+            return $id;
+        };
     }
 
     public function test_raw_client_id_app_ids_keep_client_id(): void

@@ -2,11 +2,11 @@
 
 namespace Modules\Login\Http\Controllers\Api\V1;
 
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Modules\Login\Helpers\JwtHelper;
 use Modules\Login\Helpers\LoginHelper;
-use Modules\Login\Helpers\StringHelper;
 use Modules\Login\Http\Controllers\Controller;
 use Modules\Login\Models\App;
 use Modules\Login\Services\DeviceService\DeviceSet;
@@ -39,13 +39,18 @@ class AuthController extends Controller
             ['package_id' => $data_decode['package_id']],
             ['platform' => DeviceSet::platform($data_decode['platform']), 'name' => $data_decode['package_id']]
         );
-        $data_decode['app_id'] = $app->id;
 
-        if (! in_array($app->id, config('login.api.raw_client_id_app_ids', []))) {
-            $data_decode['client_id'] = StringHelper::filter($data_decode['client_id']).'_'.$app->id;
+        try {
+            // (string): client_id dang so trong JSON (vd 12345) van bam duoc
+            $device = DeviceSet::findOrCreate((string) $data_decode['client_id'], $app->id, $data_decode['platform']);
+        } catch (QueryException $e) {
+            report($e);
+            // Message co binding BINARY(16) (device_id_hash) -> khong phai UTF-8, json_encode se chet theo.
+            // Chi lo chi tiet khi debug: message chua SQL + host DB.
+            $message = config('app.debug') && mb_check_encoding($e->getMessage(), 'UTF-8') ? $e->getMessage() : 'Register device error!';
+
+            return $this->response(['message' => $message], 500);
         }
-
-        $device = DeviceSet::findOrCreate($data_decode);
         $secret = $device->secret;
 
         Cache::put("device_secret_{$device->id}", $secret, config('login.api.device_secret_cache_ttl'));

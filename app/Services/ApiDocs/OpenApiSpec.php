@@ -63,7 +63,7 @@ class OpenApiSpec
             'description' => "`secret` = base64(iv + AES-256-CBC(json)) với khoá `JWT_OPENSSL_DEVICE_SECRET`; json gồm "
                 .'`client_id`, `platform` (`android`/`ios`), `package_id`, `time` (epoch giây, hết hạn sau '
                 .config('login.api.secret_ttl').' giây khi APP_DEBUG=false). Tạo secret để thử: `php artisan login:create-device-token`. '
-                .'Gọi lại với cùng `client_id` trả về cùng thiết bị.',
+                .'Gọi lại với cùng `client_id` (không phân biệt hoa/thường, bỏ khoảng trắng đầu/cuối) trả về cùng thiết bị; cùng `client_id` ở app khác là thiết bị khác.',
             'requestBody' => $this->jsonBody(['secret' => ['type' => 'string', 'example' => 'base64...']], ['secret']),
             'responses' => [
                 '200' => $this->jsonResponse('JWT của thiết bị', $this->envelope([

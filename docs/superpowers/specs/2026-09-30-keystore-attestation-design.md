@@ -1,6 +1,6 @@
 # Android Keystore attestation cho module Login — Design
 
-Nguồn yêu cầu: `laravel-keystore-backend.md`. Tài liệu này ghi lại cách áp dụng nó vào module `Login`
+Nguồn yêu cầu: `../../laravel-keystore-backend.md`. Tài liệu này ghi lại cách áp dụng nó vào module `Login`
 và những chỗ cố ý làm khác tài liệu gốc.
 
 ## Mục tiêu
