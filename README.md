@@ -142,7 +142,8 @@ Giá trị không phải tên route sẽ được coi là đường dẫn: vd `.
 
 Module có sẵn trang Swagger UI cho các API của module ở `GET /admin/api-docs` (tên route `login.api-docs`), spec OpenAPI 3 ở `GET /admin/api-docs/openapi.json` (`login.api-docs.spec`). Cả hai cần **login CMS** (middleware `auth`) — chưa login sẽ bị chuyển về `/login`. Sidebar tự có mục **API Docs** ngay trên **Đăng xuất**.
 
-- Nội dung: `add-device`, và khi bật attestation: `attest/challenge`, `attest/register`, kèm mô tả header và chuỗi ký của `signed.device`. Spec sinh theo config hiện tại, nên đổi `api.prefix` hay tắt attestation thì tài liệu tự đổi theo.
+- Trang có 2 tab: **Hướng dẫn tích hợp app** (luồng tổng quan, tạo `secret` cho add-device, lưu/làm mới JWT, attest Android, ký request bằng OkHttp interceptor — code Kotlin, bảng mã lỗi → app cần làm gì; giá trị prefix/thời hạn lấy từ config đang chạy) và **API (Swagger)**.
+- Nội dung Swagger: `add-device`, và khi bật attestation: `attest/challenge`, `attest/register`, kèm mô tả header và chuỗi ký của `signed.device`. Spec sinh theo config hiện tại, nên đổi `api.prefix` hay tắt attestation thì tài liệu tự đổi theo.
 - **Try it out**: bấm **Authorize**, dán `access_token` từ `add-device` để gọi các API cần JWT. Tạo `secret` để thử `add-device`: `php artisan login:create-device-token`. Route có `signed.device` không thử được trên Swagger (cần ký bằng key trong Keystore).
 - Swagger UI nạp từ CDN (`cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.1`), trình duyệt mở trang cần truy cập được CDN này.
 - Đổi đường dẫn: `'api_docs_path' => 'cms/docs'`; tắt trang (và mục sidebar): `'api_docs' => false` trong khối `web` của `config/login.php`. Trang cũng không có khi `api.enabled = false`.

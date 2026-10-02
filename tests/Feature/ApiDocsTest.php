@@ -100,6 +100,48 @@ class ApiDocsTest extends TestCase
         $this->assertStringNotContainsString('X-Signature', $spec['info']['description']);
     }
 
+    public function test_page_has_integration_guide_tab(): void
+    {
+        $this->actingAs($this->createAdmin())->get('/admin/api-docs')
+            ->assertOk()
+            ->assertSeeInOrder(['Hướng dẫn tích hợp app', 'API (Swagger)'])
+            ->assertSee('/api/v1/auth/add-device')
+            ->assertSee('AES/CBC/PKCS5Padding')
+            ->assertSee('copyOf(32)')
+            ->assertSee('setAttestationChallenge')
+            ->assertSee('SHA256withECDSA')
+            ->assertSee('encodedPath')
+            ->assertSee('device_not_attested')
+            ->assertSee('300 giây');
+    }
+
+    public function test_guide_follows_config(): void
+    {
+        $this->reloadModuleRoutes([
+            'login.api.prefix' => 'mobile/v2',
+            'login.api.token_ttl_days' => 3,
+            'login.attestation.timestamp_window' => 120,
+        ]);
+
+        $this->actingAs($this->createAdmin())->get('/admin/api-docs')
+            ->assertOk()
+            ->assertSee('/mobile/v2/add-device')
+            ->assertDontSee('/api/v1/auth/add-device')
+            ->assertSee('3 ngày')
+            ->assertSee('120 giây');
+    }
+
+    public function test_guide_omits_attestation_when_disabled(): void
+    {
+        $this->reloadModuleRoutes(['login.attestation.enabled' => false]);
+
+        $this->actingAs($this->createAdmin())->get('/admin/api-docs')
+            ->assertOk()
+            ->assertSee('AES/CBC/PKCS5Padding')
+            ->assertDontSee('setAttestationChallenge')
+            ->assertDontSee('SHA256withECDSA');
+    }
+
     public function test_sidebar_links_api_docs(): void
     {
         $this->actingAs($this->createAdmin())->get('/admin')

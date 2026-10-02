@@ -16,8 +16,23 @@
                 </ol>
             </nav>
             <div class="card mb-4">
-                <div class="card-body">
-                    <div id="swagger-ui"></div>
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" data-coreui-toggle="tab" data-coreui-target="#api-guide" type="button" role="tab" aria-controls="api-guide" aria-selected="true">Hướng dẫn tích hợp app</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-coreui-toggle="tab" data-coreui-target="#api-swagger" type="button" role="tab" aria-controls="api-swagger" aria-selected="false">API (Swagger)</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body tab-content">
+                    <div class="tab-pane fade show active" id="api-guide" role="tabpanel">
+                        @include('login::pages.partials.api-guide')
+                    </div>
+                    <div class="tab-pane fade" id="api-swagger" role="tabpanel">
+                        <div id="swagger-ui"></div>
+                    </div>
                 </div>
             </div>
         </div>
