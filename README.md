@@ -2,7 +2,7 @@
 
 Module cho [nwidart/laravel-modules](https://laravelmodules.com/docs/13/getting-started/introduction), gộp từ 2 module `Login` + `CoreUI` cũ:
 
-- **CMS login**: trang `/login`, `/logout`, trang admin mặc định `/admin` và layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
+- **CMS login**: trang `/login`, `/logout`, trang admin mặc định `/admin`, trang Swagger `/admin/api-docs` cho API của module và layout admin CoreUI (`login::layouts.master`) với sidebar/header/footer cấu hình bằng config.
 - **API auth cho thiết bị**: `POST /api/v1/auth/add-device` cấp JWT theo device, middleware `auth.api` để bảo vệ route API của project, `LoginHelper::AuthApi()` để lấy device/app hiện tại.
 - **Android Keystore attestation**: đăng ký public key của key nằm trong phần cứng (TEE/StrongBox) qua Key Attestation, middleware `signed.device` kiểm tra chữ ký từng request (chống sửa request, gửi lại, app bị đóng gói lại).
 - Lệnh artisan `login:env` (điền biến env vào `.env` + `.env.example`), `login:create-user`, `login:create-device-token`.
@@ -99,7 +99,7 @@ Biến có giá trị mặc định được ghi rõ giá trị thay vì để t
 
 Sau khi login, module chuyển tới trang trong `LOGIN_MODULE_HOME` (mặc định `login.admin`).
 
-**Trang admin mặc định.** Module có sẵn trang `GET /admin` (tên route `login.admin`, cần login): layout CoreUI, sidebar hiện menu trong `cms.menu`; menu rỗng thì sidebar chỉ có **Đăng xuất** và trang hiện hướng dẫn thêm menu. Đổi đường dẫn bằng `web.admin_path` (vd `'cms'` → `/cms`), tắt bằng `'admin_page' => false` trong `config/login.php`.
+**Trang admin mặc định.** Module có sẵn trang `GET /admin` (tên route `login.admin`, cần login): layout CoreUI, sidebar hiện menu trong `cms.menu`; menu rỗng thì sidebar chỉ có **API Docs** (nếu bật) và **Đăng xuất**, trang hiện hướng dẫn thêm menu. Đổi đường dẫn bằng `web.admin_path` (vd `'cms'` → `/cms`), tắt bằng `'admin_page' => false` trong `config/login.php`.
 
 **`LOGIN_MODULE_HOME` nhận 2 dạng:**
 - **tên route** đã đăng ký, vd `login.admin`, `admin.dashboard`;
@@ -138,6 +138,15 @@ Giá trị không phải tên route sẽ được coi là đường dẫn: vd `.
    ```
 4. Muốn login xong vào thẳng trang của project: `LOGIN_MODULE_HOME=admin.reports.index`. Có dashboard riêng rồi thì tắt trang mặc định: `'admin_page' => false`.
 
+### API Docs (Swagger)
+
+Module có sẵn trang Swagger UI cho các API của module ở `GET /admin/api-docs` (tên route `login.api-docs`), spec OpenAPI 3 ở `GET /admin/api-docs/openapi.json` (`login.api-docs.spec`). Cả hai cần **login CMS** (middleware `auth`) — chưa login sẽ bị chuyển về `/login`. Sidebar tự có mục **API Docs** ngay trên **Đăng xuất**.
+
+- Nội dung: `add-device`, và khi bật attestation: `attest/challenge`, `attest/register`, kèm mô tả header và chuỗi ký của `signed.device`. Spec sinh theo config hiện tại, nên đổi `api.prefix` hay tắt attestation thì tài liệu tự đổi theo.
+- **Try it out**: bấm **Authorize**, dán `access_token` từ `add-device` để gọi các API cần JWT. Tạo `secret` để thử `add-device`: `php artisan login:create-device-token`. Route có `signed.device` không thử được trên Swagger (cần ký bằng key trong Keystore).
+- Swagger UI nạp từ CDN (`cdn.jsdelivr.net/npm/swagger-ui-dist@5.33.1`), trình duyệt mở trang cần truy cập được CDN này.
+- Đổi đường dẫn: `'api_docs_path' => 'cms/docs'`; tắt trang (và mục sidebar): `'api_docs' => false` trong khối `web` của `config/login.php`. Trang cũng không có khi `api.enabled = false`.
+
 ### Layout CMS
 
 ```blade
@@ -160,7 +169,7 @@ Menu sidebar/header khai báo trong `config/login.php`:
 'cms' => [
     'menu' => [
         ['label' => 'Analytic', 'route' => 'admin.analytic.index', 'icon' => 'cil-speedometer'],
-        ['label' => 'API Docs', 'url' => '/api-docs', 'icon' => 'cil-description', 'target' => '_blank'],
+        ['label' => 'Hướng dẫn', 'url' => '/guide', 'icon' => 'cil-book', 'target' => '_blank'],
     ],
     'header_menu' => [
         ['label' => 'Analytic', 'route' => 'admin.analytic.index'],
@@ -208,6 +217,8 @@ Token gửi qua header `Authorization: Bearer <token>` hoặc tham số `access_
 | `web.home` | `login.admin` | Tên route hoặc đường dẫn sau khi login (env `LOGIN_MODULE_HOME`) |
 | `web.admin_page` | `true` | Bật trang admin mặc định `login.admin`; `false` khi project tự làm trang admin |
 | `web.admin_path` | `admin` | Đường dẫn của trang admin mặc định |
+| `web.api_docs` | `true` | Bật trang Swagger `login.api-docs` + mục sidebar "API Docs" |
+| `web.api_docs_path` | `admin/api-docs` | Đường dẫn trang Swagger (spec ở `<path>/openapi.json`) |
 | `web.user_model` | `null` | Model cho `login:create-user` (mặc định `auth.providers.users.model`) |
 | `cms.title`, `cms.footer`, `cms.assets_url` | | Tiêu đề, footer, URL assets đã publish |
 | `api.prefix` | `api/v1/auth` | Prefix route add-device |

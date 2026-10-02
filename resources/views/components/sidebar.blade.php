@@ -11,6 +11,14 @@
         @foreach (config('login.cms.menu', []) as $item)
             <x-login::menu-link :item="$item" />
         @endforeach
+        @if (\Illuminate\Support\Facades\Route::has('login.api-docs'))
+            <li class="nav-item">
+                <a class="nav-link" href="{{ route('login.api-docs') }}">
+                    <x-login::vendors.icon name="cil-description" />
+                    API Docs
+                </a>
+            </li>
+        @endif
         <li class="nav-item">
             <a class="nav-link" href="{{ route('logout') }}">
                 <x-login::vendors.icon name="cil-account-logout" />

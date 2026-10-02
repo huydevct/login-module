@@ -26,6 +26,10 @@ return [
         'admin_page' => true,
         'admin_path' => 'admin',
 
+        // Trang Swagger cho cac API cua module (can login CMS), them muc "API Docs" vao sidebar.
+        'api_docs' => true,
+        'api_docs_path' => 'admin/api-docs',
+
         // Model user dung cho lenh login:create-user. null = auth.providers.users.model.
         'user_model' => null,
     ],
