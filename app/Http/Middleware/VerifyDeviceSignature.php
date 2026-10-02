@@ -59,7 +59,7 @@ class VerifyDeviceSignature
             $nonce,
             $auth['device_id'],
             $auth['app_id'],
-            hash('sha256', $request->getContent()),
+            $this->bodyHash($request),
         ]);
         $raw = base64_decode($signature, true);
         if ($raw === false || @openssl_verify($payload, $raw, $device->public_key_pem, OPENSSL_ALGO_SHA256) !== 1) {
@@ -74,6 +74,19 @@ class VerifyDeviceSignature
         $request->attributes->set('login_device', $device);
 
         return $next($request);
+    }
+
+    /**
+     * SHA-256 cua body goc, doc theo stream: bo nho khong tang theo kich thuoc body (file lon).
+     * Body chua doc -> stream php://input (controller van doc lai duoc); body da doc thanh chuoi
+     * (vd JSON) -> ban sao php://temp cua chuoi do.
+     */
+    private function bodyHash(Request $request): string
+    {
+        $context = hash_init('sha256');
+        hash_update_stream($context, $request->getContent(true));
+
+        return hash_final($context);
     }
 
     private function deny(int $code, string $message, string $status): SymfonyResponse

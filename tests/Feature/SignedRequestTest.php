@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Modules\Login\Helpers\LoginHelper;
+use Modules\Login\Http\Middleware\VerifyDeviceSignature;
 use Modules\Login\Models\Device;
 use OpenSSLAsymmetricKey;
 use Tests\TestCase;
@@ -211,5 +212,53 @@ class SignedRequestTest extends TestCase
 
         $this->send('POST', '/_login/signed-only', '{}', $this->sign('POST', '/_login/signed-only', '', '{}'))
             ->assertStatus(401)->assertJsonPath('status', 'not_authenticated');
+    }
+
+    /**
+     * Body lon (vd file) phai duoc bam theo stream: bo nho khong duoc tang theo kich thuoc body,
+     * va controller van doc duoc body day du sau middleware.
+     */
+    public function test_large_body_is_hashed_as_stream(): void
+    {
+        $size = 64 * 1024 * 1024;
+        $body = fopen('php://temp/maxmemory:1048576', 'r+');   // > 1 MB ghi ra dia, khong nam trong RAM
+        $ctx = hash_init('sha256');
+        $chunk = str_repeat('a', 1024 * 1024);
+        for ($i = 0; $i < 64; $i++) {
+            fwrite($body, $chunk);
+            hash_update($ctx, $chunk);
+        }
+        rewind($body);
+        unset($chunk);
+
+        $fields = ['ts' => (string) time(), 'nonce' => bin2hex(random_bytes(16))];
+        $payload = implode("\n", ['POST', '/_login/upload', '', $fields['ts'], $fields['nonce'], $this->deviceId, $this->appId, hash_final($ctx)]);
+        openssl_sign($payload, $signature, $this->key, OPENSSL_ALGO_SHA256);
+
+        $request = Request::create('/_login/upload', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/octet-stream',
+            'HTTP_X_TIMESTAMP' => $fields['ts'],
+            'HTTP_X_NONCE' => $fields['nonce'],
+            'HTTP_X_SIGNATURE' => base64_encode($signature),
+        ], $body);
+        $request->attributes->set('login_auth', ['device_id' => $this->deviceId, 'app_id' => $this->appId]);
+
+        memory_reset_peak_usage();
+        $before = memory_get_usage();
+        $response = (new VerifyDeviceSignature)->handle($request, function (Request $request) {
+            // controller doc lai body theo stream sau middleware
+            $stream = $request->getContent(true);
+            $read = 0;
+            while (! feof($stream)) {
+                $read += strlen((string) fread($stream, 1024 * 1024));
+            }
+
+            return response((string) $read);
+        });
+        $peakGrowth = memory_get_peak_usage() - $before;
+
+        $this->assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        $this->assertSame((string) $size, $response->getContent());
+        $this->assertLessThan(16 * 1024 * 1024, $peakGrowth, 'Middleware dang doc ca body vao RAM');
     }
 }

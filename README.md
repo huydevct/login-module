@@ -280,7 +280,7 @@ Chạy sau `auth.api`, từ rẻ đến đắt; sai ở bước nào thì dừng
 3. Đủ `X-Timestamp` (chỉ chữ số), `X-Nonce` (1–64 ký tự), `X-Signature` (`missing_signature_header`).
 4. `|now − X-Timestamp| ≤ 300 giây` (`request_expired`).
 5. Thiết bị đã có `public_key_pem` (`device_not_attested`).
-6. Dựng lại chuỗi ký từ request thật và `openssl_verify` (ECDSA-SHA256) bằng public key đã lưu (`invalid_signature`).
+6. Dựng lại chuỗi ký từ request thật (body được băm **theo stream**, không đọc cả body vào RAM) và `openssl_verify` (ECDSA-SHA256) bằng public key đã lưu (`invalid_signature`).
 7. Đánh dấu nonce `login:nonce:{device_id}:{nonce}` bằng `Cache::add` (nguyên tử trên Redis, sống 600 giây) — đã có thì `replayed_request`. Nonce chỉ bị đánh dấu **sau** khi chữ ký đúng, nên request giả không "đốt" được nonce của request thật.
 
 Qua đủ 7 bước, thiết bị được gắn vào `$request->attributes->get('login_device')` rồi request chạy vào controller.
@@ -375,7 +375,40 @@ Ghi chú về path:
 - Giữ **dạng đã encode** như trong URL (OkHttp: `url.encodedPath`, không dùng `url.path`).
 - **Không có `/` cuối** (Laravel bỏ dấu `/` cuối); gốc ứng dụng ký là `/`.
 
-Body phải là JSON hoặc dạng khác đọc được nguyên văn; **không hỗ trợ `multipart/form-data`** (PHP không cho đọc body gốc của multipart nên không ký được) — upload file thì làm ở API riêng hoặc gửi base64 trong JSON.
+Body phải là JSON hoặc dạng khác đọc được nguyên văn; **không hỗ trợ `multipart/form-data`** (PHP không cho đọc body gốc của multipart nên không ký được) — upload file xem [Body lớn và upload file](#body-lớn-và-upload-file).
+
+#### Body lớn và upload file
+
+`SHA256_HEX(body)` luôn là chuỗi 64 ký tự dù body vài byte hay vài trăm MB, nên chuỗi được ký luôn ngắn; sửa 1 byte bất kỳ trong body là hash đổi hoàn toàn → `invalid_signature`. Không bỏ được dòng này: thiếu nó, ai chặn được request trên máy mình (mitmproxy, Frida) có thể giữ nguyên header chữ ký và sửa body tuỳ ý.
+
+Chi phí theo kích thước body:
+
+| Ở đâu | Chi phí |
+|---|---|
+| Băm SHA-256 trên server | ~0,06 giây / 100 MB. Middleware băm **theo stream** (`hash_update_stream`), bộ nhớ không tăng theo body — đã thử body 300 MB qua `auth.api` + `signed.device` với `memory_limit=128M`: thành công, đỉnh bộ nhớ ~6 MB |
+| Ký trong Keystore trên app | Không phụ thuộc kích thước body (chỉ ký chuỗi ngắn chứa hash). App nên băm theo stream: `MessageDigest.getInstance("SHA-256")` + `update()` từng đoạn của file, không đọc cả file vào RAM |
+| Giới hạn kích thước request | Do server quyết, không phải module: PHP `post_max_size` (mặc định **8 MB** → Laravel trả **413** trước khi tới module), nginx `client_max_body_size` (mặc định **1 MB**). Muốn nhận body lớn thì nâng các giới hạn này |
+| Body JSON | **Laravel luôn đọc hết body JSON vào RAM** để parse (không liên quan module) — đừng gửi JSON lớn; body 300 MB dạng JSON với `memory_limit=128M` sẽ lỗi hết bộ nhớ dù route không có `signed.device` |
+
+**Upload file qua `signed.device`:** gửi nội dung file làm body với `Content-Type: application/octet-stream` (không dùng multipart), chuỗi ký dùng `SHA256_HEX(nội dung file)`. Controller đọc body **theo stream**, không gọi `$request->getContent()` / `$request->all()` (sẽ đọc cả file vào RAM):
+
+```php
+Route::middleware(['auth.api', 'signed.device'])->post('/files', function (Request $request) {
+    $path = storage_path('app/uploads/'.Str::uuid());
+    $out = fopen($path, 'wb');
+    stream_copy_to_stream($request->getContent(true), $out);   // stream, không nạp cả file
+    fclose($out);
+
+    return ['size' => filesize($path)];
+});
+```
+
+**File rất lớn hoặc upload thẳng lên S3:** tách phần ký khỏi phần tải file:
+
+1. App gọi API JSON nhỏ (có `signed.device`) khai báo `sha256` + kích thước file → server lưu lại, trả upload token dùng 1 lần hoặc presigned URL.
+2. App upload file bằng endpoint riêng (`auth.api` + token) hoặc thẳng lên S3.
+3. Server tính `hash_file('sha256', ...)` của file đã nhận, so với `sha256` trong request có ký ở bước 1 — khớp mới chấp nhận.
+
 
 Lỗi trả `{"code", "message", "status"}`:
 

@@ -9,26 +9,23 @@ class DeviceSet
 {
     /**
      * Tim device theo client_id, chua co thi tao moi. $device->is_new = true khi vua tao.
+     *
+     * firstOrCreate -> createOrFirst: insert bi trung unique client_id_md5 (2 request add-device
+     * song song, hoac doc tu replica bi tre) thi doc lai ban ghi qua ket noi ghi thay vi loi 500.
      */
     public static function findOrCreate(array $data): Device
     {
         $client_id = trim($data['client_id']);
         $client_id_md5 = md5($client_id);
-        $device = Device::where('client_id_md5', $client_id_md5)->first();
-        $is_new = false;
-        if (empty($device)) {
-            $device = Device::create([
-                'name' => 'Device_'.Str::random(5),
-                'client_id' => $client_id,
-                'app_id' => $data['app_id'] ?? 0,
-                'client_id_md5' => $client_id_md5,
-                'platform' => self::platform($data['platform']),
-                'last_login' => time(),
-                'secret' => Str::random(32),
-            ]);
-            $is_new = true;
-        }
-        $device['is_new'] = $is_new;
+        $device = Device::firstOrCreate(['client_id_md5' => $client_id_md5], [
+            'name' => 'Device_'.Str::random(5),
+            'client_id' => $client_id,
+            'app_id' => $data['app_id'] ?? 0,
+            'platform' => self::platform($data['platform']),
+            'last_login' => time(),
+            'secret' => Str::random(32),
+        ]);
+        $device['is_new'] = $device->wasRecentlyCreated;
 
         return $device;
     }
