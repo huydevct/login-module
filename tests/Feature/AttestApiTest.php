@@ -33,7 +33,7 @@ class AttestApiTest extends TestCase
     private function login(string $package = 'com.example.app'): array
     {
         $data = $this->postJson('/api/v1/auth/add-device', ['secret' => LoginHelper::encodeOpenSsl(json_encode([
-            'client_id' => 'client-abc', 'platform' => 'android', 'package_id' => $package, 'time' => time(),
+            'client_id' => 'client-abc', 'platform' => 1, 'package_id' => $package, 'time' => time(),
         ]))])->assertOk()->json('data');
 
         return [['Authorization' => 'Bearer '.$data['access_token']], $data['device']['id']];

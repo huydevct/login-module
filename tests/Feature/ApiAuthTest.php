@@ -32,7 +32,7 @@ class ApiAuthTest extends TestCase
     {
         return LoginHelper::encodeOpenSsl(json_encode(array_merge([
             'client_id' => 'client-abc',
-            'platform' => 'android',
+            'platform' => 1,
             'package_id' => 'com.example.app',
             'time' => time(),
         ], $overrides)));
@@ -49,6 +49,28 @@ class ApiAuthTest extends TestCase
         $this->assertSame("client-abc_{$app->id}", $device->client_id);
         $this->assertSame(1, (int) $device->platform);
         $this->assertSame($app->id, (int) $device->app_id);
+    }
+
+    public static function platformProvider(): array
+    {
+        return [
+            'android' => [1, 1],
+            'ios' => [2, 2],
+            'unknown' => [0, 0],
+            'ngoai danh sach' => [9, 0],
+            'chuoi so' => ['2', 2],
+            'chuoi cu android' => ['android', 1],
+            'chuoi cu ios' => ['iOS', 2],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('platformProvider')]
+    public function test_add_device_maps_platform_code(int|string $platform, int $expected): void
+    {
+        $this->postJson('/api/v1/auth/add-device', ['secret' => $this->secret(['platform' => $platform])])->assertOk();
+
+        $this->assertSame($expected, (int) Device::firstOrFail()->platform);
+        $this->assertSame($expected, (int) App::firstOrFail()->platform);
     }
 
     public function test_add_device_is_idempotent_for_same_client(): void

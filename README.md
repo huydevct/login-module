@@ -189,8 +189,10 @@ App mobile mã hoá payload rồi gửi lên:
 ```
 POST /api/v1/auth/add-device
 secret = base64(iv + AES-256-CBC(json, JWT_OPENSSL_DEVICE_SECRET))
-json   = {"client_id": "...", "platform": "android|ios", "package_id": "com.example.app", "time": 1700000000}
+json   = {"client_id": "...", "platform": 1, "package_id": "com.example.app", "time": 1700000000}
 ```
+
+`platform`: `1` android, `2` ios, `0` unknown (giá trị khác cũng thành `0`). Chuỗi `"android"`/`"ios"` của app bản cũ vẫn được nhận.
 
 Response: `data.access_token` (JWT, hạn `api.token_ttl_days` ngày) và `data.device`. Secret chỉ hợp lệ trong `api.secret_ttl` giây (bỏ qua khi `APP_DEBUG=true`). Tạo secret để test: `php artisan login:create-device-token`.
 

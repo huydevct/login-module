@@ -26,7 +26,7 @@ class DeviceIdentityTest extends TestCase
     private function addDevice(string $clientId, string $package = 'com.example.app')
     {
         return $this->postJson('/api/v1/auth/add-device', ['secret' => LoginHelper::encodeOpenSsl(json_encode([
-            'client_id' => $clientId, 'platform' => 'android', 'package_id' => $package, 'time' => time(),
+            'client_id' => $clientId, 'platform' => 1, 'package_id' => $package, 'time' => time(),
         ]))]);
     }
 

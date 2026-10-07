@@ -26,7 +26,7 @@ class CreateDeviceToken extends Command
     {
         $data = json_encode([
             'client_id' => $this->ask('Client ID '),
-            'platform' => $this->ask('Platform (android, ios)', 'android'),
+            'platform' => (int) $this->ask('Platform (1: android, 2: ios, 0: unknown)', '1'),
             'package_id' => $this->ask('Package ID ', 'app_id_1'),
             'time' => time(),
         ]);

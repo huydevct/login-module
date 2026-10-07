@@ -117,11 +117,15 @@ class DeviceSet
     }
 
     /**
-     * 1: Android, 2: iOS. Nhan ca 'android'/'ios' lan 1/2.
+     * 1: Android, 2: iOS, 0: unknown. Van nhan 'android'/'ios' cua app ban cu.
      */
     public static function platform($platform): int
     {
-        return in_array(strtolower((string) $platform), ['android', '1'], true) ? 1 : 2;
+        return match (is_scalar($platform) ? strtolower(trim((string) $platform)) : '') {
+            '1', 'android' => 1,
+            '2', 'ios' => 2,
+            default => 0,
+        };
     }
 
     public static function createOrUpdate(array $data, string $id = '')
