@@ -21,5 +21,6 @@ Route::middleware('auth')->group(function () {
         $docs = '/'.trim((string) config('login.web.api_docs_path', 'admin/api-docs'), '/');
         Route::get($docs, [ApiDocsController::class, 'index'])->name('login.api-docs');
         Route::get($docs.'/openapi.json', [ApiDocsController::class, 'spec'])->name('login.api-docs.spec');
+        Route::post($docs.'/device-secret', [ApiDocsController::class, 'deviceSecret'])->name('login.api-docs.device-secret');
     }
 });

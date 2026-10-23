@@ -24,6 +24,9 @@
                         <li class="nav-item" role="presentation">
                             <button class="nav-link" data-coreui-toggle="tab" data-coreui-target="#api-swagger" type="button" role="tab" aria-controls="api-swagger" aria-selected="false">API (Swagger)</button>
                         </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-coreui-toggle="tab" data-coreui-target="#api-backend" type="button" role="tab" aria-controls="api-backend" aria-selected="false">Backend Settings</button>
+                        </li>
                     </ul>
                 </div>
                 <div class="card-body tab-content">
@@ -32,6 +35,9 @@
                     </div>
                     <div class="tab-pane fade" id="api-swagger" role="tabpanel">
                         <div id="swagger-ui"></div>
+                    </div>
+                    <div class="tab-pane fade" id="api-backend" role="tabpanel">
+                        @include('login::pages.partials.backend-settings')
                     </div>
                 </div>
             </div>

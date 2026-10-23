@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Modules\Login\Helpers\LoginHelper;
 use Modules\Login\Providers\RouteServiceProvider;
 use Tests\TestCase;
 
@@ -140,6 +141,53 @@ class ApiDocsTest extends TestCase
             ->assertSee('AES/CBC/PKCS5Padding')
             ->assertDontSee('setAttestationChallenge')
             ->assertDontSee('SHA256withECDSA');
+    }
+
+    public function test_page_has_backend_settings_tab_with_defaults(): void
+    {
+        $this->actingAs($this->createAdmin())->get('/admin/api-docs')
+            ->assertOk()
+            ->assertSeeInOrder(['API (Swagger)', 'Backend Settings'])
+            ->assertSee('name="client_id" value="123"', false)
+            ->assertSee('name="package_id" value="app_id_1"', false)
+            ->assertSee('<option value="1" selected>', false)
+            ->assertSee(route('login.api-docs.device-secret', [], false), false);
+    }
+
+    public function test_generated_secret_is_accepted_by_add_device(): void
+    {
+        config(['app.debug' => false, 'login.api.secret_ttl' => 60]);
+
+        $data = $this->actingAs($this->createAdmin())->postJson('/admin/api-docs/device-secret', [
+            'client_id' => '123',
+            'platform' => 1,
+            'package_id' => 'app_id_1',
+        ])->assertOk()->json();
+
+        $payload = json_decode(LoginHelper::decodeOpenSsl($data['secret']), true);
+        $this->assertSame(['client_id' => '123', 'platform' => 1, 'package_id' => 'app_id_1'], array_diff_key($payload, ['time' => 0]));
+        $this->assertSame($payload['time'], $data['created_at']);
+        $this->assertSame($payload['time'] + 60, $data['expires_at']);
+        $this->assertTrue($data['expiry_enforced']);
+
+        $this->postJson('/api/v1/auth/add-device', ['secret' => $data['secret']])
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['access_token']]);
+    }
+
+    public function test_device_secret_validates_input(): void
+    {
+        $this->actingAs($this->createAdmin())->postJson('/admin/api-docs/device-secret', [
+            'client_id' => '',
+            'platform' => 5,
+            'package_id' => 'app_id_1',
+        ])->assertStatus(422)->assertJsonValidationErrors(['client_id', 'platform']);
+    }
+
+    public function test_guest_cannot_generate_device_secret(): void
+    {
+        $this->postJson('/admin/api-docs/device-secret', ['client_id' => '123', 'platform' => 1, 'package_id' => 'app_id_1'])
+            ->assertUnauthorized();
     }
 
     public function test_sidebar_links_api_docs(): void
